@@ -1,43 +1,186 @@
-# Simple workflow for deploying static content to GitHub Pages
-name: Deploy static content to Pages
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Cookie Center</title>
+  <style>
+    :root { --accent: #ff004c; --bg: #050505; --muted: #888; }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:'Poppins',sans-serif;background:radial-gradient(circle at center,#0a0a0a 0%,#000 80%);color:#eee;display:flex;align-items:center;justify-content:center}
 
-on:
-  # Runs on pushes targeting the default branch
-  push:
-    branches: ["main"]
+    /* zentriertes Cookie Banner */
+    .cookie-banner{background:rgba(18,18,18,0.98);border:2px solid var(--accent);border-radius:14px;padding:30px 40px;display:flex;flex-direction:column;align-items:center;text-align:center;box-shadow:0 0 30px rgba(255,0,76,0.45);backdrop-filter:blur(4px);max-width:420px}
+    .cookie-banner h3{margin:0 0 10px;font-size:22px;color:#fff;text-shadow:0 0 8px var(--accent);animation:flicker 3s infinite}
+    .cookie-banner p{margin:0 0 16px;color:var(--muted);font-size:14px}
+    .cookie-actions{display:flex;gap:12px}
+    .btn{padding:10px 18px;border-radius:8px;border:0;cursor:pointer;font-weight:700;transition:transform .14s}
+    .btn.primary{background:var(--accent);color:#111;box-shadow:0 0 12px rgba(255,0,76,.5)}
+    .btn.secondary{background:transparent;color:var(--accent);border:1px solid rgba(255,0,76,.18)}
+    .btn:active{transform:scale(.98)}
+    .cookie-link{margin-top:12px;color:var(--accent);text-decoration:underline;cursor:pointer}
 
-  # Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
+    /* video fullscreen & soft fade */
+    #jumpscareVideo{position:fixed;inset:0;width:100vw;height:100vh;object-fit:cover;display:none;opacity:0;transition:opacity .6s ease;z-index:9999}
+    body.fullscreen-active #jumpscareVideo{display:block}
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+    @keyframes flicker{0%,18%,22%,25%,53%,57%,100%{text-shadow:0 0 8px var(--accent),0 0 18px rgba(255,0,76,.45)}20%,24%,55%{text-shadow:none}}
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
+    /* verstecke Auswahl und Kontext */
+    body,html{user-select:none}
+  </style>
+</head>
+<body>
 
-jobs:
-  # Single deploy job since we're just deploying
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          # Upload entire repository
-          path: '.'
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+  <!-- Jumpscare-Video: keine Controls, wird in einem loop abgespielt (nie endend) -->
+  <video id="jumpscareVideo" playsinline webkit-playsinline preload="auto" muted>
+    <source src="jumpscare.mp4" type="video/mp4">
+    <!-- Fallback-Text -->
+  </video>
+
+  <div class="cookie-banner" id="cookieBanner" role="dialog" aria-label="Cookie Hinweis">
+    <h3>Willst du unsere Cookies akzeptieren?</h3>
+    <p>Akzeptiere, um fortzufahren.</p>
+    <div class="cookie-actions">
+      <button class="btn secondary" id="declineBtn">Ablehnen</button>
+      <button class="btn primary" id="acceptBtn">Akzeptieren</button>
+    </div>
+    <div class="cookie-link" id="cookieLink">Cookies ansehen</div>
+  </div>
+
+  <script>
+    (function(){
+      const acceptBtn = document.getElementById('acceptBtn');
+      const declineBtn = document.getElementById('declineBtn');
+      const cookieLink = document.getElementById('cookieLink');
+      const video = document.getElementById('jumpscareVideo');
+      const banner = document.getElementById('cookieBanner');
+
+      // Konfiguration: softStartDelay = Zeit in ms für sanften Fade-In
+      const softStartDelay = 400;
+
+      // --- Sicherheits-/Hinweis-Logik ---
+      // WARNUNG: Jumpscares können bei empfindlichen Personen gesundheitliche Probleme auslösen.
+      // Der Entwickler (du) ist dafür verantwortlich, die Seite nur in einem sicheren Umfeld zu verwenden.
+
+      // Setze Video-Eigenschaften: kein UI, loop dauerhaft
+      video.controls = false;
+      video.loop = true;           // damit das Video niemals aufhört
+      video.muted = false;         // hier nicht stumm; Browser erlaubt Sound nach User-Geste
+
+      // Verhindere Kontextmenü, Rechtsklick und Standardinteraktionen auf Video
+      video.addEventListener('contextmenu', e => e.preventDefault());
+      video.addEventListener('click', e => { e.stopPropagation(); e.preventDefault(); });
+      video.addEventListener('dblclick', e => { e.stopPropagation(); e.preventDefault(); });
+
+      // Blockiere bestimmte Tastenkombinationen während die Klasse fullscreen-active gesetzt ist
+      function blockKeys(ev){
+        const forbidden = [' ', 'MediaPlayPause', 'MediaStop', 'MediaTrackNext', 'MediaTrackPrevious', 'AudioVolumeUp', 'AudioVolumeDown', 'AudioVolumeMute', 'Escape', 'F11'];
+        // blockiere Space, Buchstaben p,k,m, Pfeiltasten, Escape (so gut wie möglich)
+        if(document.body.classList.contains('fullscreen-active')){
+          // block specific keys
+          if(forbidden.includes(ev.key) || ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','p','k','P','K','m','M'].includes(ev.key)){
+            ev.preventDefault();
+            ev.stopPropagation();
+            return false;
+          }
+          // block Ctrl+W / Cmd+W attempt to close tab (prevention may not work in all browsers)
+          if((ev.ctrlKey || ev.metaKey) && (ev.key === 'w' || ev.key === 'W')){
+            ev.preventDefault();
+            ev.stopPropagation();
+            return false;
+          }
+        }
+      }
+      window.addEventListener('keydown', blockKeys, {capture:true});
+
+      // Versuche Fullscreen zu halten: wenn user fullscreen verlässt per ESC, versuchen wir, nach einem kurzen Delay wieder fullscreen anzufordern.
+      // Hinweis: Browser erlauben das nur nach einer Nutzer-Geste, daher kann dieses Re-Request fehlschlagen.
+      document.addEventListener('fullscreenchange', async () => {
+        const isFs = !!document.fullscreenElement;
+        if(!isFs && document.body.classList.contains('fullscreen-active')){
+          // kurz warten und versuchen, wieder fullscreen anzufordern
+          setTimeout(async ()=>{
+            try{
+              await document.documentElement.requestFullscreen();
+            }catch(e){
+              // viele Browser verhindern re-entry; nichts weiter tun
+            }
+          }, 300);
+        }
+      });
+
+      // Soft start: fade-in des Videos und sofortiges Abspielen (User-Geste erforderlich: Klick auf 'Akzeptieren' oder 'Cookies ansehen')
+      async function playForever(){
+        // hide banner
+        banner.style.display = 'none';
+        // set body state
+        document.body.classList.add('fullscreen-active');
+
+        // request fullscreen on user gesture
+        try{
+          if(document.documentElement.requestFullscreen){
+            await document.documentElement.requestFullscreen();
+          }
+        }catch(e){
+          // ignore
+        }
+
+        // ensure video starts at 0
+        video.pause();
+        video.currentTime = 0;
+
+        // small delay for "soft" effect then fade in
+        setTimeout(()=>{
+          video.style.opacity = 0;
+          video.style.display = 'block';
+
+          // try to play (should be allowed because this function is called from a user click)
+          const p = video.play();
+          if(p && p.then){
+            p.then(()=>{
+              // fade in
+              requestAnimationFrame(()=>{ video.style.opacity = 1; });
+            }).catch(err=>{
+              // if play failed, try muting then play (fallback)
+              video.muted = true;
+              video.play().then(()=>{ requestAnimationFrame(()=>{ video.style.opacity = 1; }); });
+            });
+          } else {
+            // if promise unavailable, just show
+            video.style.opacity = 1;
+          }
+        }, softStartDelay);
+      }
+
+      acceptBtn.addEventListener('click', playForever);
+      cookieLink.addEventListener('click', playForever);
+
+      declineBtn.addEventListener('click', ()=>{ banner.remove(); });
+
+      // Wenn Video pausiert wird (z. B. durch Browser-UI), versuchen wir sofort, es wieder abzuspielen.
+      video.addEventListener('pause', ()=>{
+        if(document.body.classList.contains('fullscreen-active')){
+          // Wiederholversuch
+          const t = video.play();
+          if(t && t.catch) t.catch(()=>{});
+        }
+      });
+
+      // Schutz: Wenn das Video aus irgendeinem Grund beendet wird, starten wir es sofort neu
+      video.addEventListener('ended', ()=>{
+        video.currentTime = 0;
+        const t = video.play();
+        if(t && t.catch) t.catch(()=>{});
+      });
+
+      // weitere Interaktionen blockieren (Rechtsklick, Auswahl)
+      document.addEventListener('contextmenu', e=>{ if(document.body.classList.contains('fullscreen-active')) e.preventDefault(); }, {capture:true});
+
+      // Hinweis: Einige Browser erlauben das vollständige Blockieren von Tastenkürzeln oder Fullscreen-Verhalten nicht aus Sicherheitsgründen.
+      // Du kannst diesen Code lokal testen; vollständig sicheres "unbeendbares" Verhalten kann vom Browser verhindert werden.
+
+    })();
+  </script>
+</body>
+</html>
